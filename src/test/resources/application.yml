@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16://localhost/gestion_service_test_db
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    username: test
+    password: test
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+jwt:
+  secret: test_secret_key_for_junit_tests_32_chars_min
+  expiration: 86400000
+
+wallet-service:
+  url: http://localhost:9090
+
+logging:
+  level:
+    com.example.gestionservice: DEBUG

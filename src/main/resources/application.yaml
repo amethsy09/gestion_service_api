@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: gestion_service_api
+
+  # Fichier local (jamais commité, voir .gitignore) contenant INTERNAL_API_KEY.
+  config:
+    import: optional:file:./application-secrets.yaml
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/gestion_service_db
+    username: postgres
+    password: Postgres@123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties: 
+      hibernate:
+        format_sql: true
+
+  autoconfigure:
+    exclude:
+      - org.springframework.cloud.client.discovery.simple.SimpleDiscoveryClientAutoConfiguration
+
+server:
+  # 8081 est déjà pris par auth_api en local, d'où 8082 ici.
+  port: 8082
+
+banque:
+  api:
+    url: ${BANQUE_API_URL:http://localhost:8080}
+
+# Doit être strictement identique à internal.api.key dans banque1_api/application.yaml.
+# Utilisée pour sécuriser les appels serveur-à-serveur vers banque1_api.
+internal:
+  api:
+    key: ${INTERNAL_API_KEY}

@@ -1,0 +1,71 @@
+version: "3.9"
+
+# ============================================================
+# docker-compose.yml — Gestion Service API + PostgreSQL
+# Usage : docker compose up --build
+# ============================================================
+
+services:
+
+  # ===== PostgreSQL =====
+  postgres:
+    image: postgres:16-alpine
+    container_name: gestion_service_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gestion_service_db
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-postgres} -d gestion_service_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - gestion_service_net
+
+  # ===== Gestion Service API =====
+  gestion-service-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gestion_service_api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Datasource
+      DATABASE_URL: jdbc:postgresql://postgres:5432/gestion_service_db
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      # JWT — obligatoire, remplacer en production
+      JWT_SECRET: ${JWT_SECRET:-change_me_with_a_very_long_secret_key_at_least_32_chars}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      # Wallet Service externe
+      WALLET_SERVICE_URL: ${WALLET_SERVICE_URL:-http://wallet-service:8081}
+      # Profil Spring
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - gestion_service_net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  gestion_service_net:
+    driver: bridge

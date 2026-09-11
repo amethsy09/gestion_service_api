@@ -1,0 +1,31 @@
+spring:
+  # ===== DATASOURCE DEV =====
+  datasource:
+    url: jdbc:postgresql://localhost:5433/gestion_service_db
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+      pool-name: GestionServiceHikariPool
+
+  jpa:
+    show-sql: true
+
+# ===== LOGGING DEV =====
+logging:
+  level:
+    com.example.gestionservice: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+
+# ===== SWAGGER visible en DEV =====
+springdoc:
+  swagger-ui:
+    enabled: true
+  api-docs:
+    enabled: true
