@@ -11,6 +11,7 @@ import com.example.gestionservice.entity.Prestation;
 import com.example.gestionservice.entity.ServiceRequest;
 import com.example.gestionservice.enums.*;
 import com.example.gestionservice.exception.*;
+import com.example.gestionservice.repository.GestionAccountRepository;
 import com.example.gestionservice.repository.PaymentAttemptRepository;
 import com.example.gestionservice.repository.PrestationRepository;
 import com.example.gestionservice.repository.ServiceRequestRepository;
@@ -45,6 +46,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final PrestationRepository prestationRepository;
     private final WalletClient walletClient;
+    private final GestionAccountRepository gestionAccountRepository;
 
     // ======================================================
     //  PAY — Initiation du paiement
@@ -52,7 +54,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public PaymentResponse pay(UUID serviceRequestId, PaymentRequest request, UUID accountId) {
+    public PaymentResponse pay(UUID serviceRequestId, PaymentRequest request, UUID accountId, String telephone) {
         ServiceRequest serviceRequest = findAndVerifyRequest(serviceRequestId, accountId);
         validatePayable(serviceRequest);
 
@@ -67,16 +69,15 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Paiement initié : serviceRequestId={}, attemptNumber={}, idempotencyKey={}",
                 serviceRequestId, attemptNumber, idempotencyKey);
 
-        return executePayment(serviceRequest, attempt, request.getPin());
+        return executePayment(serviceRequest, attempt, request.getPin(), telephone);
     }
 
     // ======================================================
     //  RETRY — Nouvelle tentative après échec
-    // ======================================================
 
     @Override
     @Transactional
-    public PaymentResponse retryPayment(UUID serviceRequestId, PaymentRequest request, UUID accountId) {
+    public PaymentResponse retryPayment(UUID serviceRequestId, PaymentRequest request, UUID accountId, String telephone) {
         ServiceRequest serviceRequest = findAndVerifyRequest(serviceRequestId, accountId);
 
         // Vérifier que le dernier paiement est bien FAILED
@@ -110,7 +111,7 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Retry paiement : serviceRequestId={}, attemptNumber={}, idempotencyKey={}",
                 serviceRequestId, attemptNumber, newIdempotencyKey);
 
-        return executePayment(serviceRequest, newAttempt, request.getPin());
+        return executePayment(serviceRequest, newAttempt, request.getPin(), telephone);
     }
 
     // ======================================================
@@ -157,20 +158,20 @@ public class PaymentServiceImpl implements PaymentService {
 
     private PaymentResponse executePayment(ServiceRequest serviceRequest,
                                            PaymentAttempt attempt,
-                                           String pin) {
+                                           String pin,
+                                           String telephone) {
         try {
-            WalletPaymentRequest walletRequest = WalletPaymentRequest.builder()
-                    .accountId(serviceRequest.getAccountId())
-                    .serviceRequestId(serviceRequest.getId())
-                    .amount(serviceRequest.getAmount())
-                    .description("Paiement demande : " + serviceRequest.getTitle())
-                    .pin(pin)   // transmis, jamais stocké
-                    .idempotencyKey(attempt.getIdempotencyKey())
-                    .build();
+             WalletPaymentRequest walletRequest = WalletPaymentRequest.builder()
+                     .telephone(telephone)
+                     .serviceRequestId(serviceRequest.getId())
+                     .amount(serviceRequest.getAmount())
+                     .description("Paiement demande : " + serviceRequest.getTitle())
+                     .pin(pin)   // transmis, jamais stocké
+                     .idempotencyKey(attempt.getIdempotencyKey())
+                     .build();
 
             // Appel Wallet — NE PAS logger walletRequest (contient le PIN)
             WalletPaymentResponse walletResponse = walletClient.pay(walletRequest);
-
             if ("SUCCESS".equals(walletResponse.getStatus())) {
                 applySuccess(serviceRequest, attempt, walletResponse.getTransactionReference());
                 log.info("Paiement réussi : serviceRequestId={}, ref={}",
@@ -277,6 +278,12 @@ public class PaymentServiceImpl implements PaymentService {
         if (request.getStatus() == ServiceRequestStatus.CANCELLED) {
             throw new BusinessException("Impossible de payer une demande annulée");
         }
+    }
+
+    private String resolveTelephone(UUID accountId) {
+        return gestionAccountRepository.findById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("GestionAccount", accountId))
+                .getTelephone();
     }
 
     private PaymentResponse buildPaymentResponse(ServiceRequest serviceRequest,

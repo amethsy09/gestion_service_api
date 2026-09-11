@@ -34,7 +34,7 @@ public class PaymentController {
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request,
             @AuthenticationPrincipal JwtAuthenticationPrincipal principal) {
-        PaymentResponse response = paymentService.pay(id, request, principal.getAccountId());
+        PaymentResponse response = paymentService.pay(id, request, principal.getAccountId(), principal.getTelephone());
         return ResponseEntity.ok(ApiResponse.success("Paiement traité", response));
     }
 
@@ -46,7 +46,7 @@ public class PaymentController {
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request,
             @AuthenticationPrincipal JwtAuthenticationPrincipal principal) {
-        PaymentResponse response = paymentService.retryPayment(id, request, principal.getAccountId());
+        PaymentResponse response = paymentService.retryPayment(id, request, principal.getAccountId(), principal.getTelephone());
         return ResponseEntity.ok(ApiResponse.success("Nouvelle tentative de paiement traitée", response));
     }
 

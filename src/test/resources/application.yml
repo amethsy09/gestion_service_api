@@ -21,6 +21,11 @@ jwt:
 wallet-service:
   url: http://localhost:9090
 
+wallet:
+  internal:
+    api:
+      key: test_wallet_internal_key
+
 logging:
   level:
     com.example.gestionservice: DEBUG

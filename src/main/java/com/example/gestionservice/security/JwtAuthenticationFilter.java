@@ -1,6 +1,5 @@
 package com.example.gestionservice.security;
 
-import com.example.gestionservice.enums.Role;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -17,13 +16,23 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Filtre JWT — extrait et valide le Bearer token à chaque requête.
- * Peuple le SecurityContext avec JwtAuthenticationPrincipal (accountId + roles).
- * NE JAMAIS logger le token complet.
+ *
+ * <p>Flux :</p>
+ * <pre>
+ * Authorization: Bearer JWT
+ *     ↓  validation signature + expiration
+ * claims.sub
+ *     ↓  téléphone
+ * AccountSecurityResolver.resolve(telephone)
+ *     ↓  gestion_account → UUID interne + rôles
+ * JwtAuthenticationPrincipal
+ *     ↓  SecurityContext
+ * </pre>
+ *
+ * <p>NE JAMAIS logger le token JWT complet ni le PIN.</p>
  */
 @Slf4j
 @Component
@@ -34,6 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;
+    private final AccountSecurityResolver accountSecurityResolver;
 
     @Override
     protected void doFilterInternal(
@@ -53,10 +63,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                UUID accountId = jwtService.extractAccountId(claims);
-                List<Role> roles = jwtService.extractRoles(claims);
+                String telephone = jwtService.extractTelephone(claims);
+                AccountSecurityInfo securityInfo = accountSecurityResolver.resolve(telephone);
 
-                JwtAuthenticationPrincipal principal = new JwtAuthenticationPrincipal(accountId, roles);
+                JwtAuthenticationPrincipal principal = new JwtAuthenticationPrincipal(
+                        securityInfo.accountId(),
+                        securityInfo.roles(),
+                        securityInfo.telephone());
 
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
@@ -65,10 +78,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 principal.getAuthorities());
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-                log.debug("JWT valide — accountId={}, rôles={}", accountId, roles);
+                log.debug("JWT valide — telephone={}, accountId={}, rôles={}",
+                        telephone, securityInfo.accountId(), securityInfo.roles());
 
             } catch (JwtException e) {
-                // Token invalide — on ne logue pas le token, uniquement le message d'erreur
                 log.warn("JWT invalide : {}", e.getMessage());
             } catch (Exception e) {
                 log.warn("Erreur lors du traitement JWT : {}", e.getMessage());

@@ -14,22 +14,42 @@ Ce microservice est responsable de :
 - L'affectation de responsables et ressources humaines aux prestations
 - La gestion des spécialités des ressources
 - La création et le suivi des tâches
-- L'initiation des paiements via le Wallet externe
+- L'initiation des paiements via le Wallet externe (banque1_api)
 - La gestion des paiements échoués, des retries et de la compensation
 
-**Ce microservice ne gère PAS :** les utilisateurs, l'authentification, les comptes, le solde, le PIN.  
-Ces responsabilités appartiennent au **Wallet externe**.
+**Ce microservice ne gère PAS :** les utilisateurs, l'authentification, les comptes bancaires, le solde, le PIN.  
+Ces responsabilités appartiennent au **Wallet externe (banque1_api)** et à **auth_api**.
 
 ---
 
 ## Architecture
 
 ```
-Controller → Service → Repository → PostgreSQL
-                ↓
-         WalletClient (OpenFeign)
-                ↓
-         Wallet Service (externe)
+                    ┌──────────────────┐
+                    │    auth_api      │
+                    │  OTP / Login / JWT│
+                    └────────┬─────────┘
+                             │ JWT (sub = telephone)
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ Angular frontend │
+                    └────────┬─────────┘
+                             │ Bearer JWT
+                             ▼
+                    ┌──────────────────────┐
+                    │  gestion-service     │
+                    │  services / demandes │
+                    │  prestations / tâches│
+                    │  paiements           │
+                    └────────┬─────────────┘
+                             │ OpenFeign (X-Internal-Api-Key)
+                             ▼
+                    ┌──────────────────────┐
+                    │  banque1_api / Wallet │
+                    │  comptes / solde / PIN│
+                    │  transactions         │
+                    └──────────────────────┘
 ```
 
 Chaque couche a une responsabilité unique. Les entités JPA ne sont jamais exposées directement — on utilise des DTOs séparés (Request / Response).
@@ -90,6 +110,7 @@ DATABASE_USERNAME: postgres
 DATABASE_PASSWORD: votre_mot_de_passe
 JWT_SECRET: votre_secret_jwt_min_32_caracteres
 WALLET_SERVICE_URL: http://localhost:8081
+WALLET_INTERNAL_API_KEY: votre_cle_interne_pour_le_wallet
 ```
 
 ---
@@ -144,6 +165,7 @@ Les migrations s'exécutent automatiquement au démarrage.
 | V7 | `prestation_resources` | Affectation ressources ↔ prestations |
 | V8 | `tasks` | Tâches |
 | V9 | `payment_attempts` | Historique tentatives paiement |
+| V10 | `gestion_account` | Identité locale (telephone → UUID interne + rôles) |
 
 ---
 
@@ -168,7 +190,6 @@ Le `SecurityConfig` active le CORS pour les origines suivantes :
 - `http://localhost:3000` (React)
 - `http://localhost:4200` (Angular)
 - `http://localhost:5173` (Vite)
-- `http://localhost:8080` (Spring Boot)
 
 Pour adapter l'URL de production, définir la variable d'environnement :
 ```bash
@@ -179,7 +200,7 @@ CORS_ALLOWED_ORIGINS=https://votre-frontend.com,https://admin.votre-frontend.com
 
 Le frontend doit :
 
-1. Obtenir un **JWT** du Wallet externe (pas de `/login` ici).
+1. Obtenir un **JWT** d'auth_api (pas de `/login` ici).
 2. Ajouter le header `Authorization: Bearer <JWT_TOKEN>` à chaque requête.
 3. Envoyer le **PIN** dans le body de `POST /api/v1/service-requests/{id}/pay` (uniquement pour les paiements).
 
@@ -193,110 +214,86 @@ const response = await fetch('/api/v1/services', {
 });
 ```
 
-### Flux de paiement (frontend)
+---
+
+## Authentification et identité
+
+### JWT (émis par auth_api — source de vérité)
+
+```json
+{
+  "sub": "771234567",
+  "iat": "...",
+  "exp": "..."
+}
+```
+
+- `sub` contient le **téléphone** de l'utilisateur.
+- Le JWT ne contient **pas** `accountId` ni `roles`.
+- auth_api n'est pas modifié.
+- Angular ne modifie pas le JWT.
+- gestion-service ne génère jamais de JWT.
+
+### Résolution d'identité (gestion-service)
 
 ```
-1. GET /api/v1/services/active          → choisir un service
-2. POST /api/v1/service-requests        → créer la demande (JWT requis)
-3. POST /api/v1/service-requests/{id}/pay  → payer (body: { "pin": "1234" })
-4. Si timeout → POST /api/v1/service-requests/{id}/payment/sync
-5. Si échec → POST /api/v1/service-requests/{id}/retry-payment
+JWT (sub = telephone)
+    ↓
+JwtService.extractTelephone(claims)  →  telephone
+    ↓
+AccountSecurityResolver.resolve(telephone)
+    ↓
+gestion_account  (requête par telephone)
+    ↓
+UUID interne + rôles (ADMIN / RESPONSIBLE / USER)
+    ↓
+JwtAuthenticationPrincipal → SecurityContext
 ```
 
-### Headers spéciaux
+#### Table `gestion_account` (V10)
 
-| Header | Où l'envoyer | Description |
+| Colonne | Type | Description |
 |---|---|---|
-| `Authorization` | Toutes les requêtes (sauf public) | `Bearer <JWT>` |
-| `Content-Type` | POST/PUT/PATCH | `application/json` |
+| `id` | UUID | Identifiant interne (PK) |
+| `telephone` | VARCHAR(20) | Téléphone (UNIQUE) — extrait du JWT `sub` |
+| `wallet_account_id` | BIGINT | Identifiant du compte chez le Wallet (type `long`) |
+| `role` | VARCHAR(30) | Rôle métier local (ROLE_USER / ROLE_ADMIN / ROLE_RESPONSIBLE) |
+| `active` | BOOLEAN | Compte activé |
+| `created_at` | TIMESTAMP | Audit |
+| `updated_at` | TIMESTAMP | Audit |
 
-### Codes HTTP
+#### Première authentification
 
-| Code | Signification |
-|---|---|
-| 200 | Succès |
-| 201 | Créé (demande, prestation, tâche, ressource…) |
-| 400 | Erreur de validation (body invalide) |
-| 401 | Non authentifié (JWT manquant/expiré) |
-| 403 | Accès refusé (mauvais rôle / ownership) |
-| 404 | Ressource introuvable |
-| 409 | Paiement déjà traité |
-| 422 | Solde insuffisant / erreur métier |
+Lorsqu'un JWT valide arrive avec un `sub` (téléphone) inconnu de `gestion_account`, un compte est créé automatiquement avec :
+- `role = ROLE_USER`
+- `active = true`
+
+Il est ensuite possible de promouvoir un utilisateur via une procédure contrôlée (USER → ADMIN / USER → RESPONSIBLE).
+
+#### Rôles Spring Security
+
+Les authorities sont créées via :
+
+```java
+new SimpleGrantedAuthority(role.name())  // ex: "ROLE_ADMIN"
+```
+
+Utiliser dans les contrôleurs :
+
+```java
+@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'RESPONSIBLE')")
+```
 
 ---
 
-## Authentification
+## Ownership des demandes
 
-Le JWT est émis par le Wallet externe. Ce microservice le valide uniquement.
+Chaque `ServiceRequest` est associée à l'UUID interne de `gestion_account`. L'ownership est toujours vérifié depuis le `SecurityContext` :
 
-```
-Authorization: Bearer <JWT_TOKEN>
-```
-
-Le JWT doit contenir :
-- `accountId` (UUID) — identifiant du compte client
-- `roles` — liste des rôles (`USER`, `ADMIN`, `RESPONSIBLE`)
-
-### Rôles et permissions
-
-| Rôle | Permissions |
-|---|---|
-| `ROLE_USER` | Créer/consulter ses demandes, payer |
-| `ROLE_ADMIN` | Gérer le catalogue, responsables, ressources, spécialités, voir toutes les demandes |
-| `ROLE_RESPONSIBLE` | Gérer prestations, affecter ressources, créer et suivre les tâches |
-
----
-
-## API — Endpoints principaux
-
-### Catalogue de services — `/api/v1/services`
-
-| Méthode | Endpoint | Rôle | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/services` | Public | Liste paginée |
-| `GET` | `/api/v1/services/active` | Public | Services actifs |
-| `GET` | `/api/v1/services/{id}` | Public | Détail |
-| `POST` | `/api/v1/services` | ADMIN | Créer |
-| `PUT` | `/api/v1/services/{id}` | ADMIN | Modifier |
-| `DELETE` | `/api/v1/services/{id}` | ADMIN | Supprimer |
-
-### Demandes de service — `/api/v1/service-requests`
-
-| Méthode | Endpoint | Rôle | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/service-requests` | USER | Créer (accountId depuis JWT) |
-| `GET` | `/api/v1/service-requests/my` | USER | Mes demandes |
-| `GET` | `/api/v1/service-requests/{id}` | USER | Détail (ownership vérifié) |
-| `DELETE` | `/api/v1/service-requests/{id}` | USER | Annuler |
-| `GET` | `/api/v1/admin/service-requests` | ADMIN | Toutes les demandes |
-
-### Paiement — `/api/v1/service-requests/{id}`
-
-| Méthode | Endpoint | Description |
-|---|---|---|
-| `POST` | `/{id}/pay` | Initier paiement via Wallet |
-| `POST` | `/{id}/retry-payment` | Réessayer après échec |
-| `POST` | `/{id}/payment/sync` | Synchroniser après timeout |
-
-### Prestations — `/api/v1/prestations`
-
-| Méthode | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/v1/prestations` | Créer |
-| `PUT` | `/{id}/plan` | Planifier (PAID → PLANNED) |
-| `PUT` | `/{id}/start` | Démarrer (PLANNED → IN_PROGRESS) |
-| `PUT` | `/{id}/complete` | Terminer (IN_PROGRESS → COMPLETED) |
-| `PUT` | `/{id}/cancel` | Annuler |
-| `POST` | `/{prestationId}/resources/{resourceId}` | Affecter une ressource |
-| `DELETE` | `/{prestationId}/resources/{resourceId}` | Retirer une ressource |
-
-### Tâches
-
-| Méthode | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/v1/prestations/{prestationId}/tasks` | Créer une tâche |
-| `PATCH` | `/api/v1/tasks/{id}/status` | Mettre à jour le statut |
-| `POST` | `/api/v1/tasks/{taskId}/assign/{resourceId}` | Affecter à une ressource |
+- Un **USER** ne voit que ses propres demandes.
+- Un **ADMIN** peut consulter toutes les demandes.
+- L'`accountId` provient exclusivement du principal JWT, jamais du body de la requête.
 
 ---
 
@@ -305,21 +302,28 @@ Le JWT doit contenir :
 ### Flux normal
 
 ```
-Client → POST /pay (pin) → GestionServiceAPI → WalletClient → Wallet
-                                                                  ↓
-                                              SUCCESS → PAID (ServiceRequest + Prestation)
-                                              FAILED  → FAILED (retry possible)
+Angular → POST /api/v1/service-requests/{id}/pay
+  {
+    "pin": "1234"
+  }
+  Authorization: Bearer <JWT>
+        ↓
+gestion-service → WalletClient (OpenFeign + X-Internal-Api-Key)
+        ↓
+banque1_api /api/v1/internal/payments/service
+        ↓
+Débit du compte bancaire (identifié par telephone)
 ```
 
 ### Idempotence
 
-Chaque tentative génère un `idempotencyKey` unique (UUID). Si l'utilisateur clique plusieurs fois sur "Payer", le Wallet détecte la clé en doublon et refuse le second débit.
+Chaque tentative génère un `idempotencyKey` unique (UUID). Le Wallet détecte les clés en double et refuse le second débit.
 
 ### Gestion timeout
 
 Si le réseau coupe après l'envoi au Wallet mais avant la réponse :
 1. La tentative reste en statut `PROCESSING`
-2. L'utilisateur appelle `POST /{id}/payment/sync`
+2. L'utilisateur appelle `POST /api/v1/service-requests/{id}/payment/sync`
 3. Le système interroge le Wallet via `idempotencyKey`
 4. Si `SUCCESS` → met à jour localement sans nouveau débit
 5. Si `FAILED` → autorise un retry
@@ -339,12 +343,10 @@ Règles :
 - `attemptNumber` est incrémenté
 - L'historique des tentatives est conservé
 
----
-
-## Communication Wallet
+### Communication Wallet
 
 ```java
-@FeignClient(name = "wallet-service", url = "${wallet-service.url}")
+@FeignClient(name = "wallet-service", url = "${wallet-service.url}", configuration = FeignConfig.class)
 public interface WalletClient {
     WalletPaymentResponse pay(WalletPaymentRequest request);
     WalletPaymentStatusResponse getPaymentStatus(UUID idempotencyKey);
@@ -354,7 +356,66 @@ public interface WalletClient {
 **Sécurité :**
 - Le PIN est transmis au Wallet et jamais stocké
 - Le PIN n'est jamais loggé (logger Feign configuré en `BASIC`)
-- L'`accountId` est toujours vérifié contre le JWT avant paiement
+- L'`X-Internal-Api-Key` est envoyé via un interceptor Feign
+- Le téléphone est envoyé au Wallet pour identifier le compte (pas d'UUID)
+- Le Wallet reste propriétaire de : comptes, solde, PIN, transactions
+
+---
+
+## Matrice des permissions
+
+| Endpoint | USER | RESPONSIBLE | ADMIN |
+|---|---|---|---|
+| GET /services | ✅ | ✅ | ✅ |
+| GET /services/active | ✅ | ✅ | ✅ |
+| GET /services/{id} | ✅ | ✅ | ✅ |
+| POST /services | ❌ | ❌ | ✅ |
+| PUT /services/{id} | ❌ | ❌ | ✅ |
+| DELETE /services/{id} | ❌ | ❌ | ✅ |
+| GET /specialties | ✅ | ✅ | ✅ |
+| POST /specialties | ❌ | ❌ | ✅ |
+| PUT/DELETE /specialties | ❌ | ❌ | ✅ |
+| POST /service-requests | ✅ | ✅ | ✅ |
+| GET /service-requests/my | ✅ | ✅ | ✅ |
+| GET /service-requests/{id} | ✅ (ownership) | ✅ (ownership) | ✅ |
+| DELETE /service-requests/{id} | ✅ (ownership) | ✅ (ownership) | ✅ |
+| GET /admin/service-requests | ❌ | ❌ | ✅ |
+| POST /prestations | ❌ | ✅ | ✅ |
+| PUT /prestations/{id}/plan | ❌ | ✅ | ✅ |
+| PUT /prestations/{id}/start | ❌ | ✅ | ✅ |
+| PUT /prestations/{id}/complete | ❌ | ✅ | ✅ |
+| PUT /prestations/{id}/cancel | ❌ | ✅ | ✅ |
+| POST/DELETE /prestations/{id}/resources | ❌ | ✅ | ✅ |
+| POST /resources | ❌ | ✅ | ✅ |
+| PUT /resources/{id} | ❌ | ✅ | ✅ |
+| DELETE /resources/{id} | ❌ | ❌ | ✅ |
+| POST /responsibles | ❌ | ❌ | ✅ |
+| PUT/DELETE /responsibles | ❌ | ❌ | ✅ |
+| POST /prestations/{id}/tasks | ❌ | ✅ | ✅ |
+| PATCH /tasks/{id}/status | ❌ | ✅ | ✅ |
+| POST /tasks/{id}/assign/{id} | ❌ | ✅ | ✅ |
+
+---
+
+## Variables d'environnement
+
+| Variable | Description | Exemple |
+|---|---|---|
+| `JWT_SECRET` | Clé secrète partagée avec auth_api (min 32 caractères) | `my_super_secret_key_32_chars` |
+| `JWT_EXPIRATION` | Durée de validité du JWT (ms) | `86400000` (24h) |
+| `WALLET_SERVICE_URL` | URL du Wallet (banque1_api) | `http://localhost:8081` |
+| `WALLET_INTERNAL_API_KEY` | Clé d'API interne pour service-to-service | `change_me_long_random_string` |
+| `CORS_ALLOWED_ORIGINS` | Origines CORS autorisées (virgules) | `https://app.example.com` |
+| `DATABASE_URL` | URL JDBC PostgreSQL | `jdbc:postgresql://localhost:5432/gestion_service_db` |
+| `DATABASE_USERNAME` | Nom d'utilisateur PostgreSQL | `postgres` |
+| `DATABASE_PASSWORD` | Mot de passe PostgreSQL | `********` |
+
+### Sécurité des secrets
+
+- `JWT_SECRET` — ne doit jamais être commité ni loggé
+- `DB_PASSWORD` — ne doit jamais être commité
+- `WALLET_INTERNAL_API_KEY` — ne doit jamais être commité ni loggé
+- Aucun JWT, PIN ou secret n'apparaît jamais dans les logs
 
 ---
 
@@ -386,17 +447,18 @@ GET /actuator/info
 ```
 src/main/java/com/example/gestionservice/
 ├── config/          # OpenApiConfig, FeignConfig
-├── controller/      # REST controllers
 ├── client/          # WalletClient (OpenFeign) + DTOs inter-services
+├── controller/      # REST controllers
 ├── dto/
 │   ├── request/     # DTOs entrants
 │   └── response/    # DTOs sortants
-├── entity/          # Entités JPA
-├── enums/           # Enums domaine
-├── exception/       # Exceptions + GlobalExceptionHandler
+├── entity/          # Entités JPA (GestionAccount, ServiceRequest, Prestation, etc.)
+├── enums/           # Enums domaine (Role, Status, etc.)
+├── exception/        # Exceptions + GlobalExceptionHandler
 ├── mapper/          # Mappers MapStruct
 ├── repository/      # Spring Data JPA
-├── security/        # JwtService, JwtAuthenticationFilter, SecurityConfig
+├── security/        # JwtService, JwtAuthenticationFilter, AccountSecurityResolver,
+│                     # JwtAuthenticationPrincipal, SecurityConfig
 └── service/
     └── impl/        # Implémentations des services
 ```

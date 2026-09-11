@@ -32,8 +32,14 @@ banque:
   api:
     url: ${BANQUE_API_URL:http://localhost:8080}
 
-# Doit être strictement identique à internal.api.key dans banque1_api/application.yaml.
+# Doit être strictement identique à WALLET_INTERNAL_API_KEY dans gestion-service.
 # Utilisée pour sécuriser les appels serveur-à-serveur vers banque1_api.
 internal:
   api:
     key: ${INTERNAL_API_KEY}
+
+# Alias utilisé par FeignConfig
+wallet:
+  internal:
+    api:
+      key: ${WALLET_INTERNAL_API_KEY:${INTERNAL_API_KEY:#{null}}}

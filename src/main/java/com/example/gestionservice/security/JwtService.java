@@ -1,6 +1,5 @@
 package com.example.gestionservice.security;
 
-import com.example.gestionservice.enums.Role;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -12,29 +11,37 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
-import java.util.List;
-import java.util.UUID;
 
 /**
- * Service de validation des JWT émis par le Wallet externe.
- * Ce microservice ne génère JAMAIS de JWT — il valide uniquement.
+ * Service de validation des JWT émis par auth_api.
+ *
+ * <p>Le JWT de auth_api contient :
+ * <pre>
+ * {
+ *   "sub": "telephone",
+ *   "iat": "...",
+ *   "exp": "..."
+ * }
+ * </pre>
+ *
+ * Ce microservice ne génère JAMAIS de JWT — il valide uniquement
+ * la signature, vérifie l'expiration et extrait le {@code sub} (téléphone).
+ *
+ * Le téléphone est ensuite résolu en identité locale via
+ * {@link AccountSecurityResolver} → {@code gestion_account}.
  */
 @Slf4j
 @Service
 public class JwtService {
 
     private final SecretKey signingKey;
-    private final long expiration;
 
-    public JwtService(
-            @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration}") long expiration) {
+    public JwtService(@Value("${jwt.secret}") String secret) {
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        this.expiration = expiration;
     }
 
     /**
-     * Valide le token JWT et retourne les claims.
+     * Valide le token JWT (signature + expiration) et retourne les claims.
      * @throws JwtException si le token est invalide ou expiré.
      */
     public Claims validateAndGetClaims(String token) {
@@ -46,44 +53,23 @@ public class JwtService {
     }
 
     /**
-     * Extrait l'accountId (UUID) depuis les claims du JWT.
-     * Le JWT du Wallet contient accountId dans le claim "accountId" ou "sub".
+     * Extrait le téléphone depuis le claim {@code sub} du JWT.
+     * Le JWT de auth_api ne contient PAS d'accountId ni de roles —
+     * seul le {@code sub} (téléphone) est utilisé.
+     *
+     * @throws JwtException si {@code sub} est absent ou vide
      */
-    public UUID extractAccountId(Claims claims) {
-        // Tentative sur "accountId" d'abord, sinon "sub"
-        String accountIdStr = claims.get("accountId", String.class);
-        if (accountIdStr == null) {
-            accountIdStr = claims.getSubject();
+    public String extractTelephone(Claims claims) {
+        String telephone = claims.getSubject();
+        if (telephone == null || telephone.isBlank()) {
+            throw new JwtException("Claim 'sub' (téléphone) absent ou vide dans le JWT");
         }
-        if (accountIdStr == null) {
-            throw new JwtException("accountId introuvable dans le JWT");
-        }
-        return UUID.fromString(accountIdStr);
+        return telephone;
     }
 
     /**
-     * Extrait la liste des rôles depuis le claim "roles" du JWT.
+     * Vérifie si le JWT est expiré.
      */
-    @SuppressWarnings("unchecked")
-    public List<Role> extractRoles(Claims claims) {
-        List<String> roleStrings = claims.get("roles", List.class);
-        if (roleStrings == null || roleStrings.isEmpty()) {
-            return List.of(Role.ROLE_USER); // rôle par défaut
-        }
-        return roleStrings.stream()
-                .map(r -> {
-                    try {
-                        // Accepte "USER", "ROLE_USER", "ADMIN", "ROLE_ADMIN" …
-                        String normalized = r.startsWith("ROLE_") ? r : "ROLE_" + r;
-                        return Role.valueOf(normalized);
-                    } catch (IllegalArgumentException e) {
-                        log.warn("Rôle inconnu dans le JWT : {}", r);
-                        return Role.ROLE_USER;
-                    }
-                })
-                .toList();
-    }
-
     public boolean isTokenExpired(Claims claims) {
         return claims.getExpiration().before(new Date());
     }

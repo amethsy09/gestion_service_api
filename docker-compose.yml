@@ -48,6 +48,8 @@ services:
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
       # Wallet Service externe
       WALLET_SERVICE_URL: ${WALLET_SERVICE_URL:-http://wallet-service:8081}
+      # Clé interne pour auth service-to-service vers le Wallet
+      WALLET_INTERNAL_API_KEY: ${WALLET_INTERNAL_API_KEY:-dev_wallet_internal_key}
       # Profil Spring
       SPRING_PROFILES_ACTIVE: prod
     depends_on:

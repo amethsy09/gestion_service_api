@@ -10,6 +10,7 @@ import com.example.gestionservice.entity.Prestation;
 import com.example.gestionservice.entity.ServiceRequest;
 import com.example.gestionservice.enums.*;
 import com.example.gestionservice.exception.*;
+import com.example.gestionservice.repository.GestionAccountRepository;
 import com.example.gestionservice.repository.PaymentAttemptRepository;
 import com.example.gestionservice.repository.PrestationRepository;
 import com.example.gestionservice.repository.ServiceRequestRepository;
@@ -38,9 +39,11 @@ class PaymentServiceTest {
     @Mock PaymentAttemptRepository paymentAttemptRepository;
     @Mock PrestationRepository prestationRepository;
     @Mock WalletClient walletClient;
+    @Mock GestionAccountRepository gestionAccountRepository;
     @InjectMocks PaymentServiceImpl service;
 
     private UUID accountId;
+    private String telephone;
     private UUID serviceRequestId;
     private ServiceRequest serviceRequest;
     private PaymentRequest paymentRequest;
@@ -48,6 +51,7 @@ class PaymentServiceTest {
     @BeforeEach
     void setUp() {
         accountId = UUID.randomUUID();
+        telephone = "771234567";
         serviceRequestId = UUID.randomUUID();
 
         serviceRequest = ServiceRequest.builder()
@@ -80,7 +84,7 @@ class PaymentServiceTest {
         when(serviceRequestRepository.save(any())).thenReturn(serviceRequest);
         when(prestationRepository.save(any())).thenReturn(prestation);
 
-        PaymentResponse result = service.pay(serviceRequestId, paymentRequest, accountId);
+        PaymentResponse result = service.pay(serviceRequestId, paymentRequest, accountId, telephone);
 
         assertThat(result.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
         assertThat(serviceRequest.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
@@ -99,7 +103,7 @@ class PaymentServiceTest {
                 WalletPaymentResponse.builder().status("FAILED").failureReason("Solde insuffisant").build());
         when(serviceRequestRepository.save(any())).thenReturn(serviceRequest);
 
-        PaymentResponse result = service.pay(serviceRequestId, paymentRequest, accountId);
+        PaymentResponse result = service.pay(serviceRequestId, paymentRequest, accountId, telephone);
 
         assertThat(result.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
         assertThat(serviceRequest.getPaymentStatus()).isEqualTo(PaymentStatus.FAILED);
@@ -117,7 +121,7 @@ class PaymentServiceTest {
                 .build();
         when(serviceRequestRepository.findById(serviceRequestId)).thenReturn(Optional.of(serviceRequest));
 
-        assertThatThrownBy(() -> service.pay(serviceRequestId, paymentRequest, accountId))
+        assertThatThrownBy(() -> service.pay(serviceRequestId, paymentRequest, accountId, telephone))
                 .isInstanceOf(PaymentAlreadyProcessedException.class);
         verify(walletClient, never()).pay(any());
     }
@@ -127,7 +131,7 @@ class PaymentServiceTest {
     void pay_wrongAccount_throws() {
         when(serviceRequestRepository.findById(serviceRequestId)).thenReturn(Optional.of(serviceRequest));
 
-        assertThatThrownBy(() -> service.pay(serviceRequestId, paymentRequest, UUID.randomUUID()))
+        assertThatThrownBy(() -> service.pay(serviceRequestId, paymentRequest, UUID.randomUUID(), "770000000"))
                 .isInstanceOf(ForbiddenException.class);
     }
 
@@ -144,7 +148,7 @@ class PaymentServiceTest {
         when(paymentAttemptRepository.findLatestByServiceRequestId(serviceRequestId))
                 .thenReturn(Optional.of(attempt));
 
-        assertThatThrownBy(() -> service.retryPayment(serviceRequestId, paymentRequest, accountId))
+        assertThatThrownBy(() -> service.retryPayment(serviceRequestId, paymentRequest, accountId, telephone))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("retry");
     }
@@ -164,7 +168,6 @@ class PaymentServiceTest {
                 .thenReturn(Optional.of(failedAttempt));
         when(paymentAttemptRepository.save(any())).thenAnswer(inv -> {
             PaymentAttempt saved = inv.getArgument(0);
-            // Vérifier que l'idempotencyKey est nouvelle
             assertThat(saved.getIdempotencyKey()).isNotEqualTo(oldKey);
             assertThat(saved.getAttemptNumber()).isEqualTo(2);
             return saved;
@@ -175,7 +178,7 @@ class PaymentServiceTest {
         when(prestationRepository.findByServiceRequestId(serviceRequestId)).thenReturn(Optional.empty());
         when(serviceRequestRepository.save(any())).thenReturn(serviceRequest);
 
-        PaymentResponse result = service.retryPayment(serviceRequestId, paymentRequest, accountId);
+        PaymentResponse result = service.retryPayment(serviceRequestId, paymentRequest, accountId, telephone);
 
         assertThat(result.getAttemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCESS);
         assertThat(result.getAttemptNumber()).isEqualTo(2);
@@ -217,11 +220,10 @@ class PaymentServiceTest {
         when(walletClient.pay(any())).thenThrow(
                 new WalletCommunicationException("Le Wallet est temporairement indisponible"));
 
-        assertThatThrownBy(() -> service.pay(serviceRequestId, paymentRequest, accountId))
+        assertThatThrownBy(() -> service.pay(serviceRequestId, paymentRequest, accountId, telephone))
                 .isInstanceOf(WalletCommunicationException.class)
                 .hasMessageContaining("sync");
 
-        // Aucun débit côté demande (statut non mis à PAID)
         assertThat(serviceRequest.getPaymentStatus()).isNotEqualTo(PaymentStatus.PAID);
     }
 }

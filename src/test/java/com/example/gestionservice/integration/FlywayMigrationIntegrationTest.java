@@ -2,12 +2,17 @@ package com.example.gestionservice.integration;
 
 import com.example.gestionservice.AbstractIntegrationTest;
 import com.example.gestionservice.repository.*;
+import com.example.gestionservice.entity.GestionAccount;
+import com.example.gestionservice.enums.Role;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Vérifie que les migrations Flyway V1-V9 s'exécutent correctement
@@ -24,6 +29,7 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
     @Autowired ResourceRepository resourceRepository;
     @Autowired TaskRepository taskRepository;
     @Autowired PaymentAttemptRepository paymentAttemptRepository;
+    @Autowired GestionAccountRepository gestionAccountRepository;
 
     @Test
     @DisplayName("V1 — service_catalog : données initiales présentes")
@@ -40,7 +46,31 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("V1-V9 — toutes les tables existent et sont requêtables")
+    @DisplayName("V10 — gestion_account : création et contraintes")
+    void v10_gestionAccount_tableConstraints() {
+        GestionAccount account = GestionAccount.builder()
+                .telephone("771234567")
+                .role(Role.ROLE_USER)
+                .active(true)
+                .build();
+        gestionAccountRepository.save(account);
+
+        assertThat(account.getId()).isNotNull();
+        assertThat(account.getTelephone()).isEqualTo("771234567");
+        assertThat(account.getRole()).isEqualTo(Role.ROLE_USER);
+
+        // Test unicité telephone
+        GestionAccount duplicate = GestionAccount.builder()
+                .telephone("771234567")
+                .role(Role.ROLE_ADMIN)
+                .active(true)
+                .build();
+        assertThatThrownBy(() -> gestionAccountRepository.saveAndFlush(duplicate))
+                .isInstanceOf(Exception.class);
+    }
+
+    @Test
+    @DisplayName("V1-V10 — toutes les tables existent et sont requêtables")
     void allTables_existAndQueryable() {
         assertThat(serviceCatalogRepository.findAll()).isNotNull();
         assertThat(specialtyRepository.findAll()).isNotNull();
@@ -49,6 +79,7 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
         assertThat(resourceRepository.findAll()).isNotNull();
         assertThat(taskRepository.findAll()).isNotNull();
         assertThat(paymentAttemptRepository.findAll()).isNotNull();
+        assertThat(gestionAccountRepository.findAll()).isNotNull();
     }
 
     @Test
