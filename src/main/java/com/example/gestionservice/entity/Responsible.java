@@ -20,6 +20,9 @@ import java.util.List;
 @SuperBuilder
 public class Responsible extends BaseEntity {
 
+    protected Responsible() {
+    }
+
     @Column(name = "first_name", nullable = false)
     private String firstName;
 

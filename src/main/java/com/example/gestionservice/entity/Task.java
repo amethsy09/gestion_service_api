@@ -24,6 +24,9 @@ import java.time.LocalDateTime;
 @SuperBuilder
 public class Task extends BaseEntity {
 
+    protected Task() {
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "prestation_id", nullable = false)
     private Prestation prestation;
