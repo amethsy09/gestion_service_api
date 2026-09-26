@@ -21,6 +21,9 @@ import java.util.List;
 @SuperBuilder
 public class Resource extends BaseEntity {
 
+    protected Resource() {
+    }
+
     @Column(name = "first_name", nullable = false)
     private String firstName;
 

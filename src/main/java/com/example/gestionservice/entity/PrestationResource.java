@@ -30,6 +30,9 @@ import java.time.LocalDateTime;
 @SuperBuilder
 public class PrestationResource extends BaseEntity {
 
+    protected PrestationResource() {
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "prestation_id", nullable = false)
     private Prestation prestation;

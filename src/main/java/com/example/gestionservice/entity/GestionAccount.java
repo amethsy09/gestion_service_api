@@ -32,6 +32,9 @@ import java.util.UUID;
 @SuperBuilder
 public class GestionAccount extends BaseEntity {
 
+    protected GestionAccount() {
+    }
+
     /**
      * Téléphone tel quel extrait du JWT (claim {@code sub}).
      * UNIQUE — c'est la clé de résolution d'identité.

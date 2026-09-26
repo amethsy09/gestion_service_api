@@ -37,3 +37,8 @@ application-secrets.yaml
 application-secrets.yml
 !application-secrets.yaml.example
 !application-secrets.yml.example
+
+### Environment ###
+.env
+.env.*
+!.env.example
