@@ -104,13 +104,12 @@ admin:
 
 # ===== WALLET SERVICE =====
 wallet-service:
-  url: ${WALLET_SERVICE_URL:http://localhost:8081}
+  url: ${WALLET_SERVICE_URL:http://localhost:8083}
 
-# ===== WALLET INTERNAL API KEY (service-to-service auth) =====
-wallet:
-  internal:
-    api:
-      key: ${WALLET_INTERNAL_API_KEY:#{null}}
+# ===== INTERNAL API KEY (service-to-service auth) =====
+internal:
+  api:
+    key: ${INTERNAL_API_KEY:#{null}}
 
 # ===== FEIGN =====
 spring.cloud.openfeign:

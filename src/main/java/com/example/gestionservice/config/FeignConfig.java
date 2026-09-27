@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class FeignConfig {
 
-    @Value("${wallet.internal.api.key:#{null}}")
+    @Value("${internal.api.key:#{null}}")
     private String internalApiKey;
 
     /**
