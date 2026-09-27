@@ -14,31 +14,42 @@ import java.util.UUID;
 /**
  * Principal Spring Security construit après résolution d'identité.
  *
- * <p><b>Important :</b> {@code accountId} est l'identifiant interne de l'identité
- * de gestion-service, résolu à partir du téléphone contenu dans le JWT.
- * Il ne provient PAS directement du JWT (qui ne contient que {@code sub = telephone}).
- * Il provient de la table {@code gestion_account}.</p>
+ * <p><b>Identité UUID (Étape 5).</b> {@code accountId} est l'identifiant
+ * interne de gestion-service : il est à la fois la valeur du claim {@code sub}
+ * du JWT local et la clé de lecture de {@code gestion_account.id}.</p>
  *
- * <p>Les rôles sont gérés localement par gestion-service et ne proviennent pas du JWT.</p>
+ * <pre>
+ * JWT sub (UUID) → AccountSecurityResolver.resolve(accountId) → ce principal
+ * </pre>
  *
- * <p>{@code telephone} est conservé pour être envoyé au Wallet lors des paiements,
- * sans conversion UUID ↔ long.</p>
+ * <p>Les rôles sont gérés localement par gestion-service et ne proviennent
+ * <b>pas</b> du JWT : ils sont relus en base à chaque requête, ce qui permet
+ * de révoquer un rôle sans attendre l'expiration du jeton.</p>
+ *
+ * <p>{@code telephone} provient de {@code GestionAccount.telephone} (lu en
+ * base), et non plus du claim {@code sub}. Il est conservé inchangé car il
+ * est transmis au Wallet lors des paiements, sans conversion UUID ↔ long.</p>
+ *
+ * <p>La signature du constructeur n'a pas changé : {@code getAccountId()},
+ * {@code getRole()} / {@code getRoles()} et {@code getTelephone()} restent
+ * disponibles et utilisés par {@code ServiceRequestController} et
+ * {@code PaymentController}.</p>
  */
 @Getter
 @AllArgsConstructor
 public class JwtAuthenticationPrincipal implements UserDetails {
 
     /**
-     * UUID interne de l'identité gestion-service.
-     * Provenant de {@code gestion_account.id}, pas du JWT.
+     * UUID interne de l'identité gestion-service
+     * ({@code gestion_account.id}, égale au claim {@code sub}).
      */
     private final UUID accountId;
 
-    /** Rôles métier locaux (jamais extraits du JWT). */
+    /** Rôles métier locaux relus en base (jamais extraits du JWT). */
     private final List<Role> roles;
 
     /**
-     * Téléphone extrait du JWT ({@code sub}).
+     * Téléphone du compte, issu de {@code GestionAccount.telephone}.
      * Utilisé pour les appels au Wallet (identification du compte bancaire).
      */
     private final String telephone;
@@ -50,14 +61,25 @@ public class JwtAuthenticationPrincipal implements UserDetails {
                 .toList();
     }
 
+    /**
+     * Rôle métier unique du compte, lu en base.
+     * Raccourci pour le code métier qui n'a besoin que du rôle principal.
+     *
+     * @return le rôle du compte, ou {@code null} si aucun rôle n'est porté
+     */
+    public Role getRole() {
+        return (roles == null || roles.isEmpty()) ? null : roles.get(0);
+    }
+
     @Override
     public String getPassword() {
         return null;
     }
 
     /**
-     * Retourne l'UUID interne de gestion-service.
-     * Utilisé par le code métier pour l'ownership des demandes.
+     * Retourne l'UUID interne de gestion-service, sous forme de chaîne.
+     * Utilisé par le code métier pour l'ownership des demandes
+     * ({@code principal.getAccountId()} côté contrôleurs).
      */
     @Override
     public String getUsername() {

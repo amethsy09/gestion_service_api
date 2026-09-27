@@ -4,6 +4,7 @@ import com.example.gestionservice.dto.request.ResponsibleRequest;
 import com.example.gestionservice.dto.response.ApiResponse;
 import com.example.gestionservice.dto.response.PageResponse;
 import com.example.gestionservice.dto.response.ResponsibleResponse;
+import com.example.gestionservice.service.ResponsibleAccountService;
 import com.example.gestionservice.service.ResponsibleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -28,13 +29,14 @@ import java.util.UUID;
 public class ResponsibleController {
 
     private final ResponsibleService service;
+    private final ResponsibleAccountService accountService;
 
     @PostMapping
     @Operation(summary = "Créer un responsable")
     public ResponseEntity<ApiResponse<ResponsibleResponse>> create(
             @Valid @RequestBody ResponsibleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Responsable créé avec succès", service.create(request)));
+                .body(ApiResponse.success("Responsable créé avec succès", accountService.createWithTemporaryPassword(request)));
     }
 
     @GetMapping

@@ -124,6 +124,17 @@ public class GlobalExceptionHandler {
     }
 
     // ============================================================
+    //  409 — Conflit (unicité déjà utilisée)
+    // ============================================================
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(
+            ConflictException ex, HttpServletRequest request) {
+        log.warn("Conflit d'unicité : {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, "CONFLICT", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    // ============================================================
     //  401 / 403 — Sécurité
     // ============================================================
 

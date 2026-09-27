@@ -6,10 +6,8 @@ import com.example.gestionservice.entity.ServiceCatalog;
 import com.example.gestionservice.enums.Role;
 import com.example.gestionservice.repository.GestionAccountRepository;
 import com.example.gestionservice.repository.ServiceCatalogRepository;
+import com.example.gestionservice.support.JwtTestTokenFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,21 +18,26 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 /**
- * Tests d'intégration — ServiceRequest endpoints avec JWT réel (sub = telephone).
+ * Tests d'intégration — endpoints ServiceRequest avec JWT réel.
+ *
+ * <p>Le compte de test est créé <b>directement en base</b> et le jeton est
+ * produit par {@link JwtTestTokenFactory} (même secret que l'application) au
+ * format local {@code sub = gestion_account.id}, seul format accepté depuis
+ * l'Étape 5.</p>
  */
 @AutoConfigureMockMvc
 @DisplayName("ServiceRequest — Tests d'intégration (JWT réel)")
 class ServiceRequestIntegrationTest extends AbstractIntegrationTest {
+
+    /** Montant du service de test — également le montant attendu sur la demande. */
+    private static final String TEST_SERVICE_PRICE = "500000";
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
@@ -44,40 +47,49 @@ class ServiceRequestIntegrationTest extends AbstractIntegrationTest {
     @Value("${jwt.secret}")
     String jwtSecret;
 
+    private JwtTestTokenFactory tokenFactory;
+
     private String telephone;
     private String jwtToken;
+    private GestionAccount account;
     private ServiceCatalog catalog;
 
     @BeforeEach
     void setUp() {
-        telephone = "77" + UUID.randomUUID().toString().substring(0, 7).replaceAll("[^0-9]", "");
-        jwtToken = buildJwt(telephone);
+        tokenFactory = new JwtTestTokenFactory(jwtSecret);
 
-        GestionAccount account = gestionAccountRepository.findByTelephone(telephone).orElseGet(() ->
-                gestionAccountRepository.save(GestionAccount.builder()
-                        .telephone(telephone)
-                        .role(Role.ROLE_USER)
-                        .active(true)
-                        .build()));
+        // Compte créé directement en base : le test ne dépend plus d'un jeton
+        // forgé pour établir l'identité.
+        telephone = JwtTestTokenFactory.uniqueTelephone();
+        account = gestionAccountRepository.saveAndFlush(GestionAccount.builder()
+                .fullName("Test User")
+                .telephone(telephone)
+                .email("test-" + telephone + "@example.com")
+                .role(Role.ROLE_USER)
+                .active(true)
+                .build());
 
-        catalog = catalogRepository.findAll().stream().findFirst()
-                .orElseGet(() -> catalogRepository.save(ServiceCatalog.builder()
-                        .name("Test Service " + UUID.randomUUID())
-                        .basePrice(new BigDecimal("500000"))
-                        .active(true)
-                        .build()));
+        // Format local : sub = gestion_account.id (UUID).
+        jwtToken = tokenFactory.localTokenForAccount(account);
+
+        // Catalogue dédié à ce test : ne pas réutiliser une entrée existante,
+        // dont le prix ferait échouer l'assertion sur le montant de la demande.
+        catalog = ServiceCatalog.builder()
+                .name("Test Service " + UUID.randomUUID())
+                .basePrice(new BigDecimal(TEST_SERVICE_PRICE))
+                .active(true)
+                .build();
+        catalog = catalogRepository.save(catalog);
     }
 
     @Test
     @DisplayName("POST /api/v1/service-requests — accountId interne depuis gestion_account, statut WAITING_PAYMENT")
-    void createRequest_withJwt_telephoneResolvedToInternalId() throws Exception {
+    void createRequest_withLocalJwt_accountIdResolvedFromUuidSubject() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
                 "serviceId", catalog.getId(),
                 "title", "Mon projet intégration",
                 "description", "Test intégration Testcontainers"
         ));
-
-        GestionAccount account = gestionAccountRepository.findByTelephone(telephone).orElseThrow();
 
         mockMvc.perform(post("/api/v1/service-requests")
                         .header("Authorization", "Bearer " + jwtToken)
@@ -102,28 +114,12 @@ class ServiceRequestIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/service-requests — sans JWT → 401")
-    void createRequest_withoutJwt_returns401() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of(
-                "serviceId", catalog.getId(),
-                "title", "Test sans JWT"
-        ));
-
-        mockMvc.perform(post("/api/v1/service-requests")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
     @DisplayName("POST /api/v1/service-requests — body invalide → 400 VALIDATION_ERROR")
     void createRequest_invalidBody_returns400() throws Exception {
-        String body = "{}";
-
         mockMvc.perform(post("/api/v1/service-requests")
                         .header("Authorization", "Bearer " + jwtToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.errors").isArray());
@@ -137,16 +133,38 @@ class ServiceRequestIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Construit un JWT de test signé avec le secret configuré.
-     * Le JWT contient UNIQUEMENT sub = telephone (comme auth_api réel).
+     * Une requête anonyme (sans JWT) sur un endpoint protégé retourne un
+     * JSON HTTP 401 via {@code RestAuthenticationEntryPoint}.
+     *
+     * <p>Ce comportement a été corrigé par l'ajout de
+     * {@code RestAuthenticationEntryPoint} et {@code RestAccessDeniedHandler}
+     * dans {@code SecurityConfig}.</p>
      */
-    private String buildJwt(String telephone) {
-        return Jwts.builder()
-                .setSubject(telephone)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 3_600_000))
-                .signWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)),
-                        SignatureAlgorithm.HS256)
-                .compact();
+    @Test
+    @DisplayName("GET /api/v1/service-requests/my — sans JWT → 401 JSON (auth requis)")
+    void getMyRequests_withoutJwt_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/service-requests/my"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("AUTHENTICATION_REQUIRED"))
+                .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    /**
+     * Une requête anonyme (sans JWT) sur un endpoint protégé en écriture
+     * retourne un JSON HTTP 401 via {@code RestAuthenticationEntryPoint}.
+     *
+     * <p>Ce comportement a été corrigé par l'ajout de
+     * {@code RestAuthenticationEntryPoint} et {@code RestAccessDeniedHandler}
+     * dans {@code SecurityConfig}.</p>
+     */
+    @Test
+    @DisplayName("POST /api/v1/service-requests — sans JWT → 401 JSON (auth requis)")
+    void createRequest_withoutJwt_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/service-requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("AUTHENTICATION_REQUIRED"))
+                .andExpect(jsonPath("$.message").isNotEmpty());
     }
 }
