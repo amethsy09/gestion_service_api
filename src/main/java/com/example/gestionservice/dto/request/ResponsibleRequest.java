@@ -22,6 +22,7 @@ public class ResponsibleRequest {
     @Email(message = "L'email doit être valide")
     private String email;
 
+    @NotBlank(message = "Le numéro de téléphone est obligatoire")
     @Size(max = 20, message = "Le numéro de téléphone ne peut pas dépasser 20 caractères")
     private String phoneNumber;
 

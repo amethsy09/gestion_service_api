@@ -49,7 +49,9 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("V10 — gestion_account : création et contraintes")
     void v10_gestionAccount_tableConstraints() {
         GestionAccount account = GestionAccount.builder()
+                .fullName("Test User")
                 .telephone("771234567")
+                .email("test.user@example.com")
                 .role(Role.ROLE_USER)
                 .active(true)
                 .build();
@@ -57,11 +59,15 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(account.getId()).isNotNull();
         assertThat(account.getTelephone()).isEqualTo("771234567");
+        assertThat(account.getFullName()).isEqualTo("Test User");
+        assertThat(account.getEmail()).isEqualTo("test.user@example.com");
         assertThat(account.getRole()).isEqualTo(Role.ROLE_USER);
 
         // Test unicité telephone
         GestionAccount duplicate = GestionAccount.builder()
+                .fullName("Duplicate")
                 .telephone("771234567")
+                .email("dup@example.com")
                 .role(Role.ROLE_ADMIN)
                 .active(true)
                 .build();
