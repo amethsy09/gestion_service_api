@@ -96,7 +96,6 @@ logging:
 # ===== SPRINGDOC / SWAGGER =====
 springdoc:
   swagger-ui:
-    path: /swagger-ui/index.html
     operationsSorter: method
     tagsSorter: alpha
     display-request-duration: true

@@ -25,7 +25,7 @@ public class OpenApiConfig {
                                 **Microservice de gestion de services et prestations.**
                                 
                                 ## Authentification
-                                Le JWT est émis par le **Wallet externe**.  
+                                Le JWT est émis par le **Wallet externe**.
                                 Ajouter le header : `Authorization: Bearer <JWT_TOKEN>`
                                 
                                 ## Rôles
@@ -34,7 +34,7 @@ public class OpenApiConfig {
                                 - `ROLE_RESPONSIBLE` — gérer les prestations et les tâches
                                 
                                 ## Note Paiement
-                                Le PIN n'est jamais stocké ni loggé.  
+                                Le PIN n'est jamais stocké ni loggé.
                                 Les paiements utilisent une `idempotencyKey` pour éviter les doubles débits.
                                 """)
                         .version("1.0.0")

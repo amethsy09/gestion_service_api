@@ -24,12 +24,12 @@ logging:
   file:
     name: logs/gestion-service-api.log
 
-# ===== SWAGGER désactivé en PROD =====
+# ===== SWAGGER activé en PROD (local/Docker) =====
 springdoc:
   swagger-ui:
-    enabled: false
+    enabled: true
   api-docs:
-    enabled: false
+    enabled: true
 
 # ===== ACTUATOR PROD (health only) =====
 management:
