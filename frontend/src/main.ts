@@ -1,0 +1,11 @@
+import { LOCALE_ID } from '@angular/core';
+import localeFr from '@angular/common/locales/fr';
+import { registerLocaleData } from '@angular/common';
+import { bootstrapApplication } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { AppComponent } from './app/app.component';
+import { routes } from './app/app.routes';
+import { jwtInterceptor } from './app/core/jwt.interceptor';
+registerLocaleData(localeFr);
+bootstrapApplication(AppComponent, { providers: [provideRouter(routes), provideHttpClient(withInterceptors([jwtInterceptor])), { provide: LOCALE_ID, useValue: 'fr' }] }).catch(console.error);

@@ -42,3 +42,8 @@ application-secrets.yml
 .env
 .env.*
 !.env.example
+
+### Frontend Angular ###
+node_modules/
+frontend/dist/
+frontend/.angular/
