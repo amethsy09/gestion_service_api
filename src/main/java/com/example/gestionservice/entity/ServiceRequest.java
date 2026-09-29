@@ -25,6 +25,9 @@ import java.util.UUID;
 @SuperBuilder
 public class ServiceRequest extends BaseEntity {
 
+    protected ServiceRequest() {
+    }
+
     /**
      * Identifiant du compte client provenant du Wallet.
      * Récupéré uniquement depuis le JWT — jamais fourni par le client dans le body.

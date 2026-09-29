@@ -405,6 +405,8 @@ public interface WalletClient {
 | `JWT_EXPIRATION` | Durée de validité du JWT (ms) | `86400000` (24h) |
 | `WALLET_SERVICE_URL` | URL du Wallet (banque1_api) | `http://localhost:8081` |
 | `WALLET_INTERNAL_API_KEY` | Clé d'API interne pour service-to-service | `change_me_long_random_string` |
+| `MAIL_USERNAME` | Adresse Gmail expéditrice (spring.mail.username) | `mon-adresse@gmail.com` |
+| `MAIL_PASSWORD` | Mot de passe d'application Gmail (16 car.) | `****************` |
 | `CORS_ALLOWED_ORIGINS` | Origines CORS autorisées (virgules) | `https://app.example.com` |
 | `DATABASE_URL` | URL JDBC PostgreSQL | `jdbc:postgresql://localhost:5432/gestion_service_db` |
 | `DATABASE_USERNAME` | Nom d'utilisateur PostgreSQL | `postgres` |
@@ -415,6 +417,7 @@ public interface WalletClient {
 - `JWT_SECRET` — ne doit jamais être commité ni loggé
 - `DB_PASSWORD` — ne doit jamais être commité
 - `WALLET_INTERNAL_API_KEY` — ne doit jamais être commité ni loggé
+- `MAIL_PASSWORD` — ne doit jamais être commité ni loggé
 - Aucun JWT, PIN ou secret n'apparaît jamais dans les logs
 
 ---

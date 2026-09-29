@@ -18,6 +18,9 @@ import java.util.List;
 @SuperBuilder
 public class Specialty extends BaseEntity {
 
+    protected Specialty() {
+    }
+
     @Column(name = "name", nullable = false, unique = true)
     private String name;
 

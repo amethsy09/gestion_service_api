@@ -23,6 +23,9 @@ import java.util.List;
 @SuperBuilder
 public class Prestation extends BaseEntity {
 
+    protected Prestation() {
+    }
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "service_request_id", nullable = false, unique = true)
     private ServiceRequest serviceRequest;

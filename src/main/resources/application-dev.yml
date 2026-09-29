@@ -1,7 +1,7 @@
 spring:
   # ===== DATASOURCE DEV =====
   datasource:
-    url: jdbc:postgresql://localhost:5433/gestion_service_db
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/gestion_service_db}
     username: ${DATABASE_USERNAME:postgres}
     password: ${DATABASE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver

@@ -26,6 +26,9 @@ import java.util.UUID;
 @SuperBuilder
 public class PaymentAttempt extends BaseEntity {
 
+    protected PaymentAttempt() {
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "service_request_id", nullable = false)
     private ServiceRequest serviceRequest;

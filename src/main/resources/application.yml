@@ -35,9 +35,24 @@ spring:
       fail-on-unknown-properties: false
     default-property-inclusion: non_null
 
+  # ===== GMAIL SMTP — Envoi d'emails transactionnels =====
+  # spring.mail.username / password sont définis dans application-secrets.yml
+  # (fichier ignoré par Git — voir application-secrets.yml.example).
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 # ===== SERVER =====
 server:
-  port: 8080
+  port: 8082
   servlet:
     context-path: /
 
@@ -61,19 +76,40 @@ info:
     description: Microservice de gestion de services et prestations
 
 # ===== JWT =====
+# secret : partagé avec l'émetteur du token. Inchangé à cette étape —
+# sa rotation coïncidera avec le cutover de l'authentification locale.
+# issuer : exigé uniquement sur les jetons locaux (sub = gestion_account.id).
+#   Les jetons legacy (sub = telephone) n'en portent pas et restent acceptés.
+# expiration : durée de vie d'un access token, en millisecondes.
+#   3600000 = 1 h (borne haute recommandée). 24 h était trop long.
 jwt:
   secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION:86400000}
+  issuer: ${JWT_ISSUER:gestion-service}
+  expiration: ${JWT_EXPIRATION:3600000}
+
+# ===== ADMIN SEED (Étape 4) =====
+# Compte ADMIN initial créé au démarrage UNIQUEMENT s'il n'existe déjà
+# aucun ROLE_ADMIN. Idempotent : un ADMIN existant n'est jamais modifié
+# (ni mot de passe, ni active, ni nom/email/téléphone).
+# Le mot de passe n'a volontairement AUCUNE valeur par défaut ici comme
+# dans le Java : sans ADMIN_SEED_PASSWORD, le démarrage échoue avec une
+# erreur explicite plutôt que de créer un compte devinable.
+admin:
+  seed:
+    enabled: ${ADMIN_SEED_ENABLED:true}
+    full-name: ${ADMIN_SEED_FULL_NAME:Administrator}
+    telephone: ${ADMIN_SEED_TELEPHONE:771234567}
+    email: ${ADMIN_SEED_EMAIL:admin@example.com}
+    password: ${ADMIN_SEED_PASSWORD:}
 
 # ===== WALLET SERVICE =====
 wallet-service:
-  url: ${WALLET_SERVICE_URL:http://localhost:8081}
+  url: ${WALLET_SERVICE_URL:http://localhost:8083}
 
-# ===== WALLET INTERNAL API KEY (service-to-service auth) =====
-wallet:
-  internal:
-    api:
-      key: ${WALLET_INTERNAL_API_KEY:#{null}}
+# ===== INTERNAL API KEY (service-to-service auth) =====
+internal:
+  api:
+    key: ${INTERNAL_API_KEY:#{null}}
 
 # ===== FEIGN =====
 spring.cloud.openfeign:

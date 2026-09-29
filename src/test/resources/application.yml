@@ -16,7 +16,16 @@ spring:
 
 jwt:
   secret: test_secret_key_for_junit_tests_32_chars_min
-  expiration: 86400000
+  issuer: gestion-service
+  expiration: 3600000
+
+# ===== ADMIN SEED =====
+# Désactivé par défaut : les tests d'intégration d'auth ne doivent pas
+# voir apparaître un compte ADMIN. AdminSeederIntegrationTest le réactive
+# explicitement via @SpringBootTest(properties = ...).
+admin:
+  seed:
+    enabled: false
 
 wallet-service:
   url: http://localhost:9090
@@ -24,7 +33,13 @@ wallet-service:
 wallet:
   internal:
     api:
-      key: test_wallet_internal_key
+       key: test_wallet_internal_key
+
+# ===== MAIL (test) =====
+spring:
+  mail:
+    username: test@example.com
+    password: test_password_not_real
 
 logging:
   level:

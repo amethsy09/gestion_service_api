@@ -19,6 +19,9 @@ import java.util.List;
 @SuperBuilder
 public class ServiceCatalog extends BaseEntity {
 
+    protected ServiceCatalog() {
+    }
+
     @Column(name = "name", nullable = false, unique = true)
     private String name;
 

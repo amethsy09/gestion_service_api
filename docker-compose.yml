@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ============================================================
 # docker-compose.yml — Gestion Service API + PostgreSQL
 # Usage : docker compose up --build
@@ -45,11 +43,18 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       # JWT — obligatoire, remplacer en production
       JWT_SECRET: ${JWT_SECRET:-change_me_with_a_very_long_secret_key_at_least_32_chars}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      JWT_ISSUER: ${JWT_ISSUER:-gestion-service}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
       # Wallet Service externe
       WALLET_SERVICE_URL: ${WALLET_SERVICE_URL:-http://wallet-service:8081}
       # Clé interne pour auth service-to-service vers le Wallet
       WALLET_INTERNAL_API_KEY: ${WALLET_INTERNAL_API_KEY:-dev_wallet_internal_key}
+      # Admin Seeder (Étape 4) — ignoré si un ROLE_ADMIN existe déjà
+      ADMIN_SEED_ENABLED: ${ADMIN_SEED_ENABLED:-true}
+      ADMIN_SEED_FULL_NAME: ${ADMIN_SEED_FULL_NAME:-Administrator}
+      ADMIN_SEED_TELEPHONE: ${ADMIN_SEED_TELEPHONE:-771234567}
+      ADMIN_SEED_EMAIL: ${ADMIN_SEED_EMAIL:-admin@example.com}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD:-}
       # Profil Spring
       SPRING_PROFILES_ACTIVE: prod
     depends_on:
