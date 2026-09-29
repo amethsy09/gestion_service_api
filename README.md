@@ -17,7 +17,7 @@ Ce microservice est responsable de :
 - L'initiation des paiements via le Wallet externe (banque1_api)
 - La gestion des paiements échoués, des retries et de la compensation
 
-**Ce microservice ne gère PAS :** les utilisateurs, l'authentification, les comptes bancaires, le solde, le PIN.  
+**Ce microservice ne gère PAS :** les utilisateurs, l'authentification, les comptes bancaires, le solde, le PIN.
 Ces responsabilités appartiennent au **Wallet externe (banque1_api)** et à **auth_api**.
 
 ---
